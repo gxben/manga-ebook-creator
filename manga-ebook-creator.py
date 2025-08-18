@@ -8,12 +8,66 @@ import tempfile
 import Levenshtein
 import shutil
 from zipfile import ZipFile
+from itertools import product
+from pathlib import Path
+from PIL import Image, ImageChops
 
 META_FILE = "meta.yml"
+
+IMG_DIFF_THRESHOLD = 0.07
+
+SCAN_EXTENSIONS = [
+    "*.jpg",
+    "*.jpeg",
+    "*.png",
+    "*.webp",
+]
 
 def die(msg):
     print(msg)
     sys.exit(1)
+
+def thumbnail(img):
+    """Summarise an image into a 16 x 16 image."""
+    return img.resize((16, 16))
+
+
+def pixel_difference(img1, img2) -> float:
+    """Find the difference between two images."""
+
+    diff = ImageChops.difference(img1, img2)
+    acc = 0
+    width, height = diff.size
+    for w, h in product(range(width), range(height)):
+        r, g, b = diff.getpixel((w, h))
+        acc += (r + g + b) / 3
+
+    average_diff = acc / (width * height)
+    normalised_diff = average_diff / 255
+    return normalised_diff
+
+def cleanup_dedups(path):
+    """Find images in a directory and compare them all."""
+
+    files = (list())
+    for ext in SCAN_EXTENSIONS:
+        files += list(Path(path).glob(ext))
+    diffs = {}
+
+    summaries = [(f, thumbnail(Image.open(f))) for f in files]
+    for (f1, sum1), (f2, sum2) in product(summaries, repeat=2):
+        key = tuple(sorted([str(f1), str(f2)]))
+        if f1 == f2 or key in diffs:
+            continue
+
+        diff = pixel_difference(sum1, sum2)
+        diffs[key] = diff
+
+    print("    + Cleaning up duplicated pages")
+    for key, diff in diffs.items():
+        if diff < IMG_DIFF_THRESHOLD:
+            for k in key:
+                os.remove(k)
 
 # main
 if __name__ == "__main__":
@@ -22,6 +76,7 @@ if __name__ == "__main__":
     ps.add_argument('-i', '--input', action='store', default=None, help='Input directory')
     ps.add_argument('-o', '--output', action='store', default=None, help='Output directory')
     ps.add_argument('-f', '--force', action='store_true', default=False, help='Generate ebook even if previously existing')
+    ps.add_argument('-d', '--dedup', action='store_true', default=False, help='Try to detect and cleanup duplicated scan pages (e.g. ads)')
     args = ps.parse_args()
 
     if args.input == None:
@@ -87,6 +142,10 @@ if __name__ == "__main__":
                 oname = f'{c:04}-{f}'
                 ofile = os.path.join(tmp_dir.name, oname)
                 shutil.copyfile(ifile, ofile)
+
+        # check for duplicate images (e.g. cover ads)
+        if (args.dedup):
+            cleanup_dedups(tmp_dir.name)
 
         # add all page files into CBZ/ZIP archive
         print("  - Creating temporary CBZ archive file")
