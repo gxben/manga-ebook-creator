@@ -11,11 +11,16 @@ from zipfile import ZipFile
 from itertools import product
 from pathlib import Path
 from PIL import Image, ImageChops
+import requests
+from bs4 import BeautifulSoup
 
 META_FILE = "meta.yml"
 
+COVER_PROVIDER_URI = 'https://www.amazon.fr/s'
+
 IMG_DIFF_THRESHOLD = 0.07
 
+SCAN_COVER = "0000.jpg"
 SCAN_EXTENSIONS = [
     "*.jpg",
     "*.jpeg",
@@ -69,6 +74,29 @@ def cleanup_dedups(path):
             for k in key:
                 os.remove(k)
 
+def download_cover(path, title, volume):
+    search_str = '+'.join(title.split()) + '+' + str(volume)
+    headers = {
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+        'User-Agent':'Chrome/137.0.0.0'
+    }
+
+    print("    + Downloading volume cover ...")
+    r = requests.get(COVER_PROVIDER_URI, params={'k': search_str}, headers=headers)
+    soup = BeautifulSoup(r.text, 'html.parser')
+    items = soup.find_all('div', role='listitem')
+
+    sp = BeautifulSoup(str(items[0]), 'html.parser')
+    img = soup.find('img', class_='s-image')
+    srcset = img['srcset']
+    src = srcset.split(',')[-1].lstrip().split(' ')[0]
+
+    r = requests.get(src)
+    if r.ok and r.status_code == 200:
+        dst = os.path.join(path, SCAN_COVER)
+        with open(dst, mode="wb") as f:
+            f.write(r.content)
+
 # main
 if __name__ == "__main__":
     # parse command-line
@@ -104,10 +132,10 @@ if __name__ == "__main__":
     chapterdirs.sort()
 
     for v in volumes:
-        name = v.get('name')
+        vid = v.get('id')
         chapters = v.get('chapters').split('-')
         if len(chapters) != 2:
-            die(f"Incorrect chapters definition for volume name {name}")
+            die(f"Incorrect chapters definition for volume {vid}")
 
         # retrieve chapters list
         chapters_range = range(int(chapters[0]), int(chapters[1]) + 1)
@@ -115,7 +143,7 @@ if __name__ == "__main__":
         # create volume temporary directory
         tmp_dir = tempfile.TemporaryDirectory()
 
-        print(f"  - Processing volume {name} with {len(chapters_range)} chapters")
+        print(f"  - Processing volume {vid} with {len(chapters_range)} chapters")
         # walkthrough chapters
         for c in chapters_range:
             candidatedirs = [cd for cd in chapterdirs if str(c) in cd]
@@ -143,6 +171,9 @@ if __name__ == "__main__":
                 ofile = os.path.join(tmp_dir.name, oname)
                 shutil.copyfile(ifile, ofile)
 
+        # download volume cover from Amazon
+        download_cover(tmp_dir.name, title, vid)
+
         # check for duplicate images (e.g. cover ads)
         if (args.dedup):
             cleanup_dedups(tmp_dir.name)
@@ -152,7 +183,7 @@ if __name__ == "__main__":
         tmpfiles = [os.path.join(tmp_dir.name, f) for f in os.listdir(tmp_dir.name) if os.path.isfile(os.path.join(tmp_dir.name, f))]
         tmpfiles.sort()
 
-        cbzfilename = f'{title} - {name}.cbz'
+        cbzfilename = f'{title} - Volume {vid:03}.cbz'
         cbzfile = os.path.join(tmp_dir.name, cbzfilename)
         with ZipFile(cbzfile, 'w') as zip:
             for f in tmpfiles:
@@ -161,8 +192,10 @@ if __name__ == "__main__":
         print("  - Converting CBZ archive into ePub one for Amazon Kindle")
         os.system(f'recbz --epub --bw --profile PW5 "{cbzfile}"')
 
-        epubfilename = f'{title} - {name} [reCBZ].epub'
+        epubfilename = f'{title} - Volume {vid:03} [reCBZ].epub'
         print(f"Moving {epubfilename} into {args.output} directory ...")
+        if os.stat(os.path.join(args.output, epubfilename)):
+            os.remove(os.path.join(args.output, epubfilename))
         shutil.move(epubfilename, args.output)
 
         # cleanup volume temporary directory

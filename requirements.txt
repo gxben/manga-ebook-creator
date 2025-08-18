@@ -1,3 +1,5 @@
 PyYAML
 python-Levenshtein
 reCBZ
+requests
+bs4
