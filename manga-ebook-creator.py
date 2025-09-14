@@ -133,6 +133,16 @@ if __name__ == "__main__":
 
     for v in volumes:
         vid = v.get('id')
+
+        epubfilename = f'{title} - Volume {vid:03} [reCBZ].epub'
+        try:
+            if os.stat(os.path.join(args.output, epubfilename)):
+                if args.force:
+                    os.remove(os.path.join(args.output, epubfilename))
+                continue
+        except:
+            pass
+
         chapters = v.get('chapters').split('-')
         if len(chapters) != 2:
             die(f"Incorrect chapters definition for volume {vid}")
@@ -193,13 +203,7 @@ if __name__ == "__main__":
         bindir = os.path.dirname(sys.executable)
         os.system(f'{bindir}/recbz --epub --bw --profile PW5 "{cbzfile}"')
 
-        epubfilename = f'{title} - Volume {vid:03} [reCBZ].epub'
         print(f"Moving {epubfilename} into {args.output} directory ...")
-        try:
-            if os.stat(os.path.join(args.output, epubfilename)):
-                os.remove(os.path.join(args.output, epubfilename))
-        except:
-            pass
         shutil.move(epubfilename, args.output)
 
         # cleanup volume temporary directory
