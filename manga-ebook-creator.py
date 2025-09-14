@@ -190,12 +190,16 @@ if __name__ == "__main__":
                 zip.write(f, os.path.basename(f))
 
         print("  - Converting CBZ archive into ePub one for Amazon Kindle")
-        os.system(f'recbz --epub --bw --profile PW5 "{cbzfile}"')
+        bindir = os.path.dirname(sys.executable)
+        os.system(f'{bindir}/recbz --epub --bw --profile PW5 "{cbzfile}"')
 
         epubfilename = f'{title} - Volume {vid:03} [reCBZ].epub'
         print(f"Moving {epubfilename} into {args.output} directory ...")
-        if os.stat(os.path.join(args.output, epubfilename)):
-            os.remove(os.path.join(args.output, epubfilename))
+        try:
+            if os.stat(os.path.join(args.output, epubfilename)):
+                os.remove(os.path.join(args.output, epubfilename))
+        except:
+            pass
         shutil.move(epubfilename, args.output)
 
         # cleanup volume temporary directory
