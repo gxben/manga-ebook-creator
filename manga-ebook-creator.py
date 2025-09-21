@@ -134,11 +134,11 @@ if __name__ == "__main__":
     for v in volumes:
         vid = v.get('id')
 
-        epubfilename = f'{title} - Volume {vid:03} [reCBZ].epub'
+        cbzfilename = f'{title} - Volume {vid:03}.cbz'
         try:
-            if os.stat(os.path.join(args.output, epubfilename)):
+            if os.stat(os.path.join(args.output, cbzfilename)):
                 if args.force:
-                    os.remove(os.path.join(args.output, epubfilename))
+                    os.remove(os.path.join(args.output, cbzfilename))
                 continue
         except:
             pass
@@ -189,22 +189,15 @@ if __name__ == "__main__":
             cleanup_dedups(tmp_dir.name)
 
         # add all page files into CBZ/ZIP archive
-        print("  - Creating temporary CBZ archive file")
+        print("  - Creating CBZ archive file")
         tmpfiles = [os.path.join(tmp_dir.name, f) for f in os.listdir(tmp_dir.name) if os.path.isfile(os.path.join(tmp_dir.name, f))]
         tmpfiles.sort()
 
         cbzfilename = f'{title} - Volume {vid:03}.cbz'
-        cbzfile = os.path.join(tmp_dir.name, cbzfilename)
+        cbzfile = os.path.join(args.output, cbzfilename)
         with ZipFile(cbzfile, 'w') as zip:
             for f in tmpfiles:
                 zip.write(f, os.path.basename(f))
-
-        print("  - Converting CBZ archive into ePub one for Amazon Kindle")
-        bindir = os.path.dirname(sys.executable)
-        os.system(f'{bindir}/recbz --epub --bw --profile PW5 "{cbzfile}"')
-
-        print(f"Moving {epubfilename} into {args.output} directory ...")
-        shutil.move(epubfilename, args.output)
 
         # cleanup volume temporary directory
         shutil.rmtree(tmp_dir.name)
